@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DB Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    /* ── Reset & Variables ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c10;
+      --surface:   #111418;
+      --surface2:  #181c23;
+      --border:    #222830;
+      --border2:   #2e3540;
+      --accent:    #00d4aa;
+      --accent2:   #0099ff;
+      --accent3:   #ff6b35;
+      --text:      #e8edf5;
+      --muted:     #6b7685;
+      --danger:    #ff4d6d;
+      --success:   #00d4aa;
+      --radius:    10px;
+      --mono:      'JetBrains Mono', monospace;
+      --sans:      'Syne', sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+    /* ── Layout Principal ──────────────────────────────────────────────── */
+    .app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; overflow: hidden; }
+
+    /* ── Header ────────────────────────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; border-bottom: 1px solid var(--border);
+      background: var(--surface); position: relative; z-index: 10;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; letter-spacing: -.3px; }
+    .logo-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: grid; place-items: center; font-size: 14px;
+    }
+    .status-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-family: var(--mono); color: var(--muted);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border2); transition: .3s; }
+    .dot.connected { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+    /* ── Main ──────────────────────────────────────────────────────────── */
+    main { display: grid; grid-template-columns: 300px 1fr; overflow: hidden; }
+
+    /* ── Sidebar ───────────────────────────────────────────────────────── */
+    .sidebar {
+      background: var(--surface); border-right: 1px solid var(--border);
+      overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .section { padding: 18px 16px; border-bottom: 1px solid var(--border); }
+    .section-title {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+    }
+
+    /* ── Formulário de Conexão ─────────────────────────────────────────── */
+    .field { margin-bottom: 10px; }
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; font-family: var(--mono); }
+    input, select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 10px; color: var(--text);
+      font-family: var(--mono); font-size: 12px; outline: none; transition: .2s;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,170,.1); }
+    input::placeholder { color: var(--muted); }
+
+    /* ── Botões ────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 16px; border-radius: var(--radius); border: none; cursor: pointer;
+      font-family: var(--sans); font-size: 13px; font-weight: 600;
+      transition: all .2s; white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--accent); color: #000; width: 100%;
+    }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .btn-ghost {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); font-size: 12px;
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: rgba(255,77,109,.15); color: var(--danger); border: 1px solid rgba(255,77,109,.3); }
+    .btn-danger:hover { background: rgba(255,77,109,.25); }
+
+    /* ── Árvore de Tabelas ─────────────────────────────────────────────── */
+    .tree-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 8px; cursor: pointer;
+      font-size: 13px; font-family: var(--mono); transition: .15s;
+      user-select: none;
+    }
+    .tree-item:hover { background: var(--surface2); }
+    .tree-item.active { background: rgba(0,212,170,.1); color: var(--accent); }
+    .tree-item .icon { font-size: 12px; opacity: .6; }
+    .tree-sub {
+      padding-left: 28px; display: none;
+    }
+    .tree-sub.open { display: block; }
+    .tree-col {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px; border-radius: 6px; font-size: 11px;
+      font-family: var(--mono); color: var(--muted); cursor: pointer;
+      transition: .15s;
+    }
+    .tree-col:hover { background: var(--surface2); color: var(--text); }
+    .tree-col.selected { color: var(--accent2); }
+    .col-type {
+      font-size: 9px; background: var(--border);
+      border-radius: 4px; padding: 1px 5px; color: var(--muted);
+    }
+    .col-type.text { background: rgba(0,153,255,.15); color: var(--accent2); }
+    .col-type.number { background: rgba(255,107,53,.15); color: var(--accent3); }
+
+    /* ── Área de conteúdo ──────────────────────────────────────────────── */
+    .content { overflow-y: auto; display: flex; flex-direction: column; }
+    .content::-webkit-scrollbar { width: 6px; }
+    .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ── Search Panel ──────────────────────────────────────────────────── */
+    .search-panel {
+      padding: 24px; border-bottom: 1px solid var(--border);
+      background: var(--surface); position: sticky; top: 0; z-index: 5;
+    }
+    .search-panel h2 { font-size: 14px; font-weight: 700; margin-bottom: 16px; color: var(--muted); }
+
+    .search-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+    .search-row .field { margin-bottom: 0; }
+    .search-term { flex: 1; min-width: 200px; }
+    .search-term input { padding: 10px 14px; font-size: 14px; }
+
+    /* tags de colunas selecionadas */
+    .cols-selected {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px;
+    }
+    .col-tag {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(0,153,255,.12); border: 1px solid rgba(0,153,255,.25);
+      border-radius: 20px; padding: 3px 10px 3px 8px;
+      font-size: 11px; font-family: var(--mono); color: var(--accent2);
+    }
+    .col-tag button {
+      background: none; border: none; cursor: pointer; color: var(--muted);
+      font-size: 13px; line-height: 1; padding: 0;
+    }
+    .col-tag button:hover { color: var(--danger); }
+
+    .hint { font-size: 11px; color: var(--muted); margin-top: 10px; font-family: var(--mono); }
+    .hint span { color: var(--accent); }
+
+    /* ── Tabs ──────────────────────────────────────────────────────────── */
+    .tabs { display: flex; gap: 2px; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .tab {
+      padding: 11px 18px; font-size: 12px; font-weight: 600; cursor: pointer;
+      border-bottom: 2px solid transparent; color: var(--muted);
+      transition: .2s; letter-spacing: .3px;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Results ───────────────────────────────────────────────────────── */
+    .results-area { padding: 20px 24px; flex: 1; }
+
+    .results-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+    }
+    .results-count { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+    .results-count strong { color: var(--accent); }
+
+    .sql-preview {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; font-family: var(--mono);
+      font-size: 11px; color: var(--accent); margin-bottom: 16px;
+      overflow-x: auto; white-space: nowrap;
+    }
+
+    /* ── Tabela de resultados ──────────────────────────────────────────── */
+    .table-wrap { overflow: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead { position: sticky; top: 0; }
+    th {
+      background: var(--surface2); padding: 10px 14px; text-align: left;
+      font-size: 11px; font-weight: 600; color: var(--muted); font-family: var(--mono);
+      letter-spacing: .5px; text-transform: uppercase; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 9px 14px; border-bottom: 1px solid var(--border);
+      font-family: var(--mono); font-size: 12px; max-width: 280px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr { transition: .1s; }
+    tbody tr:hover td { background: var(--surface2); }
+    .cell-null { color: var(--muted); font-style: italic; }
+    mark { background: rgba(0,212,170,.25); color: var(--accent); border-radius: 3px; padding: 0 2px; }
+
+    /* ── SQL Editor ────────────────────────────────────────────────────── */
+    .sql-editor-wrap { padding: 20px 24px; }
+    textarea {
+      width: 100%; height: 140px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-family: var(--mono); font-size: 13px;
+      padding: 14px; outline: none; resize: vertical; transition: .2s;
+      line-height: 1.6;
+    }
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,170,.1); }
+    .sql-actions { display: flex; gap: 10px; margin-top: 10px; }
+
+    /* ── Empty / Error / Loading ───────────────────────────────────────── */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; padding: 60px 20px; text-align: center; gap: 12px;
+    }
+    .empty-icon { font-size: 42px; opacity: .2; }
+    .empty-state p { font-size: 14px; color: var(--muted); max-width: 320px; line-height: 1.6; }
+    .empty-state strong { color: var(--text); }
+
+    .alert {
+      padding: 12px 16px; border-radius: var(--radius); font-size: 13px;
+      margin-bottom: 14px; font-family: var(--mono); border: 1px solid;
+    }
+    .alert-error { background: rgba(255,77,109,.08); border-color: rgba(255,77,109,.3); color: var(--danger); }
+    .alert-success { background: rgba(0,212,170,.08); border-color: rgba(0,212,170,.3); color: var(--success); }
+
+    .spinner {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid var(--border2); border-top-color: var(--accent);
+      animation: spin .7s linear infinite; display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Welcome screen ────────────────────────────────────────────────── */
+    .welcome {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; gap: 20px; padding: 40px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(0,212,170,.05) 0%, transparent 60%);
+    }
+    .welcome-logo { font-size: 56px; }
+    .welcome h1 { font-size: 28px; font-weight: 800; letter-spacing: -.5px; }
+    .welcome p { color: var(--muted); font-size: 14px; text-align: center; max-width: 380px; line-height: 1.7; }
+    .welcome-steps {
+      display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; justify-content: center;
+    }
+    .step {
+      display: flex; align-items: flex-start; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px; max-width: 180px;
+    }
+    .step-num {
+      width: 24px; height: 24px; border-radius: 50%; background: rgba(0,212,170,.15);
+      color: var(--accent); font-size: 12px; font-weight: 700;
+      display: grid; place-items: center; flex-shrink: 0;
+    }
+    .step p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Responsivo ────────────────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 45vh; }
+    }
+
+    /* ── Animações de entrada ──────────────────────────────────────────── */
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    .fade-in { animation: fadeUp .3s ease forwards; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🗄</div>
+      DB Explorer
+    </div>
+    <div class="status-badge">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Desconectado</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Conexão -->
+      <div class="section">
+        <div class="section-title">Conexão PostgreSQL</div>
+
+        <div class="field">
+          <label>Host</label>
+          <input id="dbHost" type="text" value="localhost" placeholder="localhost"/>
+        </div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 80px;gap:8px">
+          <div>
+            <label>Banco</label>
+            <input id="dbName" type="text" placeholder="meu_banco"/>
+          </div>
+          <div>
+            <label>Porta</label>
+            <input id="dbPort" type="text" value="5432"/>
+          </div>
+        </div>
+        <div class="field">
+          <label>Usuário</label>
+          <input id="dbUser" type="text" value="postgres"/>
+        </div>
+        <div class="field">
+          <label>Senha</label>
+          <input id="dbPass" type="password" placeholder="••••••••"/>
+        </div>
+
+        <button class="btn btn-primary" id="btnConnect" onclick="connect()">
+          <span id="connectLabel">⚡ Conectar</span>
+        </button>
+        <div id="connectError"></div>
+      </div>
+
+      <!-- Tabelas -->
+      <div class="section" id="tablesSection" style="display:none">
+        <div class="section-title">Tabelas</div>
+        <div id="tableTree"></div>
+      </div>
+    </aside>
+
+    <!-- ── Content ───────────────────────────────────────────────────────── -->
+    <div class="content" id="mainContent">
+      <div class="welcome" id="welcomeScreen">
+        <div class="welcome-logo">🗄️</div>
+        <h1>DB Explorer</h1>
+        <p>Conecte ao seu banco PostgreSQL e pesquise dados por nome, CPF, CNPJ, endereço ou qualquer campo.</p>
+        <div class="welcome-steps">
+          <div class="step"><div class="step-num">1</div><p>Preencha os dados de conexão ao lado</p></div>
+          <div class="step"><div class="step-num">2</div><p>Selecione a tabela e as colunas para pesquisar</p></div>
+          <div class="step"><div class="step-num">3</div><p>Digite o termo e veja os resultados</p></div>
+        </div>
+      </div>
+
+      <div id="queryScreen" style="display:none">
+
+        <!-- Search Panel -->
+        <div class="search-panel">
+          <div class="search-row">
+            <div class="field search-term">
+              <label>Termo de pesquisa</label>
+              <input id="searchTerm" type="text" placeholder="Nome, CPF, CNPJ, endereço…"
+                onkeydown="if(event.key==='Enter') search()"/>
+            </div>
+            <div class="field">
+              <label>Tipo</label>
+              <select id="searchType">
+                <option value="like">Contém (LIKE)</option>
+                <option value="exact">Exato</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="search()" id="btnSearch" style="width:auto;padding:10px 20px">
+              🔍 Buscar
+            </button>
+          </div>
+
+          <div class="cols-selected" id="colsSelected"></div>
+          <div class="hint" id="selHint">👆 Clique nas <span>colunas</span> na barra lateral para filtrar a busca</div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <div class="tab active" onclick="showTab('results',this)">Resultados</div>
+          <div class="tab" onclick="showTab('sql',this)">SQL Livre</div>
+        </div>
+
+        <!-- Aba Resultados -->
+        <div id="tab-results" class="results-area">
+          <div class="empty-state" id="emptyResults">
+            <div class="empty-icon">🔍</div>
+            <p><strong>Nenhuma busca realizada.</strong><br/>Selecione colunas e digite um termo acima.</p>
+          </div>
+          <div id="resultsContent" style="display:none"></div>
+        </div>
+
+        <!-- Aba SQL Livre -->
+        <div id="tab-sql" style="display:none">
+          <div class="sql-editor-wrap">
+            <label style="font-size:11px;color:var(--muted);font-family:var(--mono);display:block;margin-bottom:8px">SQL (apenas SELECT)</label>
+            <textarea id="sqlInput" placeholder="SELECT * FROM clientes WHERE cpf LIKE '%123%' LIMIT 100;"></textarea>
+            <div class="sql-actions">
+              <button class="btn btn-primary" style="width:auto" onclick="runSQL()">▶ Executar</button>
+              <button class="btn btn-ghost" onclick="document.getElementById('sqlInput').value=''">Limpar</button>
+            </div>
+            <div id="sqlError" style="margin-top:12px"></div>
+          </div>
+          <div class="results-area">
+            <div id="sqlResults"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── Estado ─────────────────────────────────────────────────────────────────────
+const API = 'http://localhost:3001/api';
+
+let state = {
+  connection: null,
+  tables: {},
+  currentTable: null,
+  selectedCols: [],
+  openTables: new Set(),
+};
+
+// ── Utilitários ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function showAlert(container, msg, type = 'error') {
+  $(container).innerHTML = `<div class="alert alert-${type}" style="margin-top:10px">${msg}</div>`;
+}
+
+function clearAlert(container) { $(container).innerHTML = ''; }
+
+function setLoading(btnId, loading, label) {
+  const btn = $(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.innerHTML = loading
+    ? `<span class="spinner"></span>`
+    : label;
+}
+
+// ── Conexão ────────────────────────────────────────────────────────────────────
+async function connect() {
+  const conn = {
+    host:     $('dbHost').value.trim(),
+    port:     $('dbPort').value.trim(),
+    user:     $('dbUser').value.trim(),
+    password: $('dbPass').value,
+    database: $('dbName').value.trim(),
+  };
+
+  if (!conn.host || !conn.user || !conn.database) {
+    showAlert('connectError', '⚠ Preencha host, usuário e banco.'); return;
+  }
+
+  setLoading('btnConnect', true);
+  clearAlert('connectError');
+
+  try {
+    const r = await fetch(`${API}/connect`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(conn),
+    });
+    const data = await r.json();
+
+    if (!r.ok) { showAlert('connectError', `❌ ${data.error}`); return; }
+
+    state.connection = conn;
+    state.tables     = data.tables;
+    state.selectedCols = [];
+    state.currentTable = null;
+
+    $('statusDot').classList.add('connected');
+    $('statusText').textContent = `${conn.database} @ ${conn.host}`;
+
+    renderTree();
+    $('tablesSection').style.display = 'block';
+    $('welcomeScreen').style.display = 'none';
+    $('queryScreen').style.display   = 'block';
+
+    showAlert('connectError', `✅ Conectado! ${Object.keys(data.tables).length} tabelas encontradas.`, 'success');
+
+  } catch (e) {
+    showAlert('connectError', `❌ Erro de rede: ${e.message}`);
+  } finally {
+    setLoading('btnConnect', false);
+    $('connectLabel') && ($('btnConnect').innerHTML = '<span id="connectLabel">⚡ Reconectar</span>');
+    $('btnConnect').disabled = false;
+  }
+}
+
+// ── Árvore de tabelas ──────────────────────────────────────────────────────────
+function renderTree() {
+  const tree = $('tableTree');
+  tree.innerHTML = '';
+
+  Object.entries(state.tables).forEach(([tbl, cols]) => {
+    const wrap = document.createElement('div');
+
+    const header = document.createElement('div');
+    header.className = 'tree-item' + (state.currentTable === tbl ? ' active' : '');
+    header.innerHTML = `<span class="icon">${state.openTables.has(tbl) ? '▾' : '▸'}</span> 📋 ${tbl}
+      <span style="margin-left:auto;font-size:10px;color:var(--muted)">${cols.length}</span>`;
+
+    header.onclick = () => {
+      if (state.openTables.has(tbl)) state.openTables.delete(tbl);
+      else state.openTables.add(tbl);
+      state.currentTable = tbl;
+      renderTree();
+    };
+
+    const sub = document.createElement('div');
+    sub.className = 'tree-sub' + (state.openTables.has(tbl) ? ' open' : '');
+
+    cols.forEach(col => {
+      const isSelected = state.selectedCols.some(c => c.table === tbl && c.col === col.name);
+      const typeShort = col.type.replace('character varying','varchar').replace('integer','int').split(' ')[0];
+      const typeClass = col.type.includes('char') || col.type.includes('text') ? 'text'
+                      : col.type.includes('int') || col.type.includes('num') || col.type.includes('float') ? 'number' : '';
+
+      const colEl = document.createElement('div');
+      colEl.className = 'tree-col' + (isSelected ? ' selected' : '');
+      colEl.innerHTML = `
+        <span>${isSelected ? '✓' : '○'}</span>
+        <span>${col.name}</span>
+        <span class="col-type ${typeClass}">${typeShort}</span>`;
+      colEl.onclick = () => toggleCol(tbl, col.name);
+      sub.appendChild(colEl);
+    });
+
+    wrap.appendChild(header);
+    wrap.appendChild(sub);
+    tree.appendChild(wrap);
+  });
+}
+
+function toggleCol(table, col) {
+  const idx = state.selectedCols.findIndex(c => c.table === table && c.col === col);
+  if (idx > -1) state.selectedCols.splice(idx, 1);
+  else state.selectedCols.push({ table, col });
+  renderTree();
+  renderColTags();
+}
+
+function renderColTags() {
+  const wrap = $('colsSelected');
+  const hint  = $('selHint');
+  wrap.innerHTML = '';
+
+  state.selectedCols.forEach(({ table, col }) => {
+    const tag = document.createElement('span');
+    tag.className = 'col-tag';
+    tag.innerHTML = `${table}.${col} <button onclick="toggleCol('${table}','${col}')">×</button>`;
+    wrap.appendChild(tag);
+  });
+
+  hint.style.display = state.selectedCols.length ? 'none' : 'block';
+}
+
+// ── Busca ──────────────────────────────────────────────────────────────────────
+async function search() {
+  const term = $('searchTerm').value.trim();
+  if (!term) { $('searchTerm').focus(); return; }
+
+  if (!state.selectedCols.length) {
+    showAlert('emptyResults','⚠ Selecione ao menos uma coluna na barra lateral.');
+    $('resultsContent').style.display = 'none';
+    return;
+  }
+
+  // Agrupa colunas por tabela (usa a primeira tabela com colunas selecionadas)
+  const tableMap = {};
+  state.selectedCols.forEach(({ table, col }) => {
+    if (!tableMap[table]) tableMap[table] = [];
+    tableMap[table].push(col);
+  });
+
+  const table   = Object.keys(tableMap)[0];
+  const columns = tableMap[table];
+
+  setLoading('btnSearch', true);
+
+  try {
+    const r = await fetch(`${API}/search`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        connection: state.connection,
+        table, columns,
+        searchTerm: term,
+        searchType: $('searchType').value,
+      }),
+    });
+    const data = await r.json();
+
+    if (!r.ok) { renderResultsError(data.error); return; }
+    renderResults(data, term);
+
+  } catch (e) {
+    renderResultsError(e.message);
+  } finally {
+    setLoading('btnSearch', false);
+    $('btnSearch').innerHTML = '🔍 Buscar';
+    $('btnSearch').disabled = false;
+  }
+}
+
+function renderResultsError(msg) {
+  $('emptyResults').style.display  = 'none';
+  $('resultsContent').style.display = 'block';
+  $('resultsContent').innerHTML = `<div class="alert alert-error">❌ ${msg}</div>`;
+}
+
+function renderResults({ rows, total, sql }, term) {
+  $('emptyResults').style.display  = 'none';
+  $('resultsContent').style.display = 'block';
+
+  if (!rows.length) {
+    $('resultsContent').innerHTML = `
+      <div class="empty-state fade-in" style="height:auto;padding:40px 0">
+        <div class="empty-icon">🕵️</div>
+        <p><strong>Nenhum resultado encontrado</strong><br/>Tente outro termo ou tipo de busca.</p>
+      </div>`;
+    return;
+  }
+
+  const cols = Object.keys(rows[0]);
+
+  const trs = rows.map(row => {
+    const tds = cols.map(col => {
+      let val = row[col];
+      if (val === null || val === undefined) return `<td class="cell-null">null</td>`;
+      val = String(val);
+      const hi = val.replace(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'), '<mark>$1</mark>');
+      return `<td title="${val.replace(/"/g,'&quot;')}">${hi}</td>`;
+    }).join('');
+    return `<tr>${tds}</tr>`;
+  }).join('');
+
+  $('resultsContent').innerHTML = `
+    <div class="results-meta fade-in">
+      <div class="results-count">
+        <strong>${total}</strong> resultado${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}
+        ${total >= 500 ? '(limite 500)' : ''}
+      </div>
+      <button class="btn btn-ghost" onclick="exportCSV()" style="font-size:11px;padding:6px 12px">⬇ Exportar CSV</button>
+    </div>
+    <div class="sql-preview">${sql}</div>
+    <div class="table-wrap fade-in">
+      <table>
+        <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>`;
+
+  window._lastRows = rows;
+  window._lastCols = cols;
+}
+
+// ── Export CSV ─────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!window._lastRows) return;
+  const header = window._lastCols.join(',');
+  const body = window._lastRows.map(r =>
+    window._lastCols.map(c => `"${String(r[c] ?? '').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob([header + '\n' + body], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `resultado_${Date.now()}.csv`;
+  a.click();
+}
+
+// ── SQL Livre ──────────────────────────────────────────────────────────────────
+async function runSQL() {
+  const sql = $('sqlInput').value.trim();
+  if (!sql) return;
+  clearAlert('sqlError');
+  $('sqlResults').innerHTML = `<div style="text-align:center;padding:20px"><span class="spinner"></span></div>`;
+
+  try {
+    const r = await fetch(`${API}/query`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connection: state.connection, sql }),
+    });
+    const data = await r.json();
+    if (!r.ok) { showAlert('sqlError', `❌ ${data.error}`); $('sqlResults').innerHTML=''; return; }
+
+    if (!data.rows.length) {
+      $('sqlResults').innerHTML = `<div class="alert alert-success">✅ Query executada — nenhuma linha retornada.</div>`; return;
+    }
+
+    const cols = Object.keys(data.rows[0]);
+    const trs = data.rows.map(row =>
+      `<tr>${cols.map(c => {
+        const v = row[c]; return v === null ? `<td class="cell-null">null</td>` : `<td>${String(v)}</td>`;
+      }).join('')}</tr>`
+    ).join('');
+
+    $('sqlResults').innerHTML = `
+      <div class="results-meta fade-in">
+        <div class="results-count"><strong>${data.total}</strong> linha${data.total!==1?'s':''}</div>
+      </div>
+      <div class="table-wrap fade-in">
+        <table>
+          <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+          <tbody>${trs}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    showAlert('sqlError', `❌ ${e.message}`);
+    $('sqlResults').innerHTML = '';
+  }
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  $('tab-results').style.display = name === 'results' ? 'block' : 'none';
+  $('tab-sql').style.display     = name === 'sql'     ? 'block' : 'none';
+}
+</script>
+</body>
+</html>
